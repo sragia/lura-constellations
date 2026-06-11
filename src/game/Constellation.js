@@ -43,6 +43,33 @@ function wouldCross(stars, edges, a, b) {
   return false;
 }
 
+function wouldNewEdgeCross(stars, edges, parentIdx, x, z) {
+  const ax = stars[parentIdx].x;
+  const az = stars[parentIdx].z;
+  for (const [c, d] of edges) {
+    if (c === parentIdx || d === parentIdx) continue;
+    const sc = stars[c];
+    const sd = stars[d];
+    if (segmentsCross(ax, az, x, z, sc.x, sc.z, sd.x, sd.z)) return true;
+  }
+  return false;
+}
+
+function hasCrossingEdges(stars, edges) {
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      if (edgesCross(stars, edges[i][0], edges[i][1], edges[j][0], edges[j][1])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isValidConstellation(stars, edges) {
+  return stars.length > 0 && !hasCrossingEdges(stars, edges);
+}
+
 function hasSpacingFromOthers(stars, x, z, spacing, ignoreIdx = -1) {
   const minSq = spacing * spacing;
   for (let i = 0; i < stars.length; i++) {
@@ -71,7 +98,7 @@ function fitClusterToArena(stars, centerX, centerZ, arenaRadius) {
   }));
 }
 
-function placeNearParent(parent, stars, playerX, playerZ, parentIdx, relax = 0) {
+function placeNearParent(parent, stars, edges, playerX, playerZ, parentIdx, relax = 0) {
   const {
     linkDistanceMin,
     linkDistanceMax,
@@ -81,7 +108,7 @@ function placeNearParent(parent, stars, playerX, playerZ, parentIdx, relax = 0) 
   const clusterRSq = spawnClusterRadius * spawnClusterRadius;
   const spacing = Math.max(2.5, minStarSpacing - relax);
 
-  for (let attempt = 0; attempt < 120; attempt++) {
+  for (let attempt = 0; attempt < 160; attempt++) {
     const angle = Math.random() * Math.PI * 2;
     const d = linkDistanceMin + Math.random() * (linkDistanceMax - linkDistanceMin);
     const x = parent.x + Math.cos(angle) * d;
@@ -92,13 +119,14 @@ function placeNearParent(parent, stars, playerX, playerZ, parentIdx, relax = 0) 
     if (dx * dx + dz * dz > clusterRSq) continue;
 
     if (!hasSpacingFromOthers(stars, x, z, spacing, parentIdx)) continue;
+    if (wouldNewEdgeCross(stars, edges, parentIdx, x, z)) continue;
 
     return { x, z };
   }
   return null;
 }
 
-function placeFromAnyParent(stars, playerX, playerZ, preferredIdx) {
+function placeFromAnyParent(stars, edges, playerX, playerZ, preferredIdx) {
   const indices = stars.map((_, i) => i);
   indices.sort((a, b) => {
     if (a === preferredIdx) return -1;
@@ -111,6 +139,7 @@ function placeFromAnyParent(stars, playerX, playerZ, preferredIdx) {
       const pos = placeNearParent(
         stars[parentIdx],
         stars,
+        edges,
         playerX,
         playerZ,
         parentIdx,
@@ -202,7 +231,7 @@ function growSequentially(px, pz, count, arenaRadius, mode) {
     let placedInStep = false;
 
     for (let s = 0; s < stepCount && stars.length < count; s++) {
-      const placed = placeFromAnyParent(stars, px, pz, parentIdx);
+      const placed = placeFromAnyParent(stars, edges, px, pz, parentIdx);
       if (!placed) break;
 
       const newIdx = stars.length;
@@ -219,7 +248,7 @@ function growSequentially(px, pz, count, arenaRadius, mode) {
   while (stars.length < count && fails < 120) {
     const preferredIdx =
       stars.length - 1 - Math.floor(Math.random() * Math.min(5, stars.length));
-    const placed = placeFromAnyParent(stars, px, pz, preferredIdx);
+    const placed = placeFromAnyParent(stars, edges, px, pz, preferredIdx);
     if (!placed) {
       fails++;
       continue;
@@ -235,12 +264,22 @@ function growSequentially(px, pz, count, arenaRadius, mode) {
   return { stars: fitted, edges };
 }
 
+function isBetterConstellation(next, prev) {
+  if (!prev) return true;
+  const nextValid = isValidConstellation(next.stars, next.edges);
+  const prevValid = isValidConstellation(prev.stars, prev.edges);
+  if (nextValid !== prevValid) return nextValid;
+  return next.stars.length > prev.stars.length;
+}
+
 function growSequentiallyWithRetries(px, pz, count, arenaRadius, mode) {
   let best = null;
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 24; attempt++) {
     const result = growSequentially(px, pz, count, arenaRadius, mode);
-    if (result.stars.length >= count) return result;
-    if (!best || result.stars.length > best.stars.length) best = result;
+    if (result.stars.length >= count && isValidConstellation(result.stars, result.edges)) {
+      return result;
+    }
+    if (isBetterConstellation(result, best)) best = result;
   }
   return best;
 }
@@ -273,22 +312,26 @@ function wouldHitPlayer(px, pz, stars, edges) {
 function generateConstellation(px, pz, arenaRadius) {
   const count = pickStarCount();
   const mustThreat = Math.random() < CONFIG.playerThreatChance;
+  let fallback = null;
 
-  if (mustThreat) {
-    const mode = Math.random() < 0.5 ? 'starOnPlayer' : 'beamThrough';
-    return growSequentiallyWithRetries(px, pz, count, arenaRadius, mode);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const mode = mustThreat
+      ? Math.random() < 0.5
+        ? 'starOnPlayer'
+        : 'beamThrough'
+      : 'safe';
+    const result = growSequentiallyWithRetries(px, pz, count, arenaRadius, mode);
+
+    if (isBetterConstellation(result, fallback)) fallback = result;
+
+    if (result.stars.length < CONFIG.starCountMin) continue;
+    if (!isValidConstellation(result.stars, result.edges)) continue;
+    if (!mustThreat && wouldHitPlayer(px, pz, result.stars, result.edges)) continue;
+
+    return result;
   }
 
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const result = growSequentiallyWithRetries(px, pz, count, arenaRadius, 'safe');
-    if (
-      result.stars.length >= CONFIG.starCountMin &&
-      !wouldHitPlayer(px, pz, result.stars, result.edges)
-    ) {
-      return result;
-    }
-  }
-  return growSequentiallyWithRetries(px, pz, count, arenaRadius, 'safe');
+  return fallback ?? growSequentiallyWithRetries(px, pz, count, arenaRadius, 'safe');
 }
 
 function createSparkleTexture() {
