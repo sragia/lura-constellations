@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>L'ura Constellation Practice</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <div id="timer">0.0s</div>
+      <div id="phase-hint" class="hidden">Stars incoming…</div>
+      <div id="controls-hint">WASD to move · drag to orbit camera · R to restart</div>
+    </div>
+    <div id="game-over" class="hidden">
+      <div class="game-over-backdrop"></div>
+      <div class="game-over-card">
+        <div class="game-over-icon" aria-hidden="true">
+          <span class="burst"></span>
+          <span class="burst burst-2"></span>
+          <span class="core"></span>
+        </div>
+        <p class="game-over-label">Constellation hit</p>
+        <h1>You were caught in the stars</h1>
+        <p id="final-score" class="game-over-score">Survived 0.0s</p>
+        <button id="restart-btn">Try again</button>
+        <p class="game-over-hint">Press R to restart</p>
+      </div>
+    </div>
+    <canvas id="game"></canvas>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
