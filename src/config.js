@@ -14,6 +14,7 @@ export const CONFIG = {
   starsPerStepMax: 3,
   extraLinkChance: 0.25,
   spawnClusterRadius: 12,
+  clusterBoundaryPadding: 2,
   maxStarDegree: 3,
   playerThreatChance: 0.8,
   playerRadius: 0.45,

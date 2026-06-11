@@ -368,6 +368,9 @@ export class Constellation {
     this.starMeshes = [];
     this.beamMeshes = [];
     this.particles = [];
+    this.clusterCenterX = 0;
+    this.clusterCenterZ = 0;
+    this.clusterBoundaryRadius = 0;
     this.clear();
   }
 
@@ -391,9 +394,46 @@ export class Constellation {
     const result = generateConstellation(centerX, centerZ, CONFIG.arenaRadius);
     this.stars = result.stars;
     this.edges = result.edges;
+    this.clusterCenterX = centerX;
+    this.clusterCenterZ = centerZ;
+    this.clusterBoundaryRadius = this._computeBoundaryRadius();
     this.phase = PHASE.TELEGRAPH;
     this.phaseTime = 0;
+    this.buildBoundaryVisual();
     this.buildTelegraphVisuals();
+  }
+
+  _computeBoundaryRadius() {
+    let maxDist = 0;
+    for (const star of this.stars) {
+      maxDist = Math.max(
+        maxDist,
+        dist(star.x, star.z, this.clusterCenterX, this.clusterCenterZ)
+      );
+    }
+    return Math.max(
+      maxDist + CONFIG.clusterBoundaryPadding,
+      CONFIG.spawnClusterRadius * 0.75
+    );
+  }
+
+  buildBoundaryVisual() {
+    const r = this.clusterBoundaryRadius;
+    const cx = this.clusterCenterX;
+    const cz = this.clusterCenterZ;
+
+    const ringGeo = new THREE.RingGeometry(r - 0.2, r, 64);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x991028,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    });
+    this.boundaryRing = new THREE.Mesh(ringGeo, ringMat);
+    this.boundaryRing.rotation.x = -Math.PI / 2;
+    this.boundaryRing.position.set(cx, 0.03, cz);
+
+    this.group.add(this.boundaryRing);
   }
 
   buildTelegraphVisuals() {
@@ -504,6 +544,10 @@ export class Constellation {
       p.sprite.material.opacity = 0.6 + Math.sin(elapsed * 5 + p.offset) * 0.3;
     }
 
+    if (this.boundaryRing && this.isBoundaryActive()) {
+      this.boundaryRing.material.opacity = 0.7 + Math.sin(elapsed * 4) * 0.15;
+    }
+
     if (this.phase === PHASE.TELEGRAPH && this.phaseTime >= CONFIG.telegraphDuration) {
       this.phase = PHASE.ACTIVE;
       this.phaseTime = 0;
@@ -541,6 +585,18 @@ export class Constellation {
 
   isActive() {
     return this.phase === PHASE.ACTIVE;
+  }
+
+  isBoundaryActive() {
+    return this.phase === PHASE.TELEGRAPH || this.phase === PHASE.ACTIVE;
+  }
+
+  isPlayerOutsideBoundary(px, pz, playerRadius) {
+    if (!this.isBoundaryActive()) return false;
+    const limit = this.clusterBoundaryRadius - playerRadius;
+    const dx = px - this.clusterCenterX;
+    const dz = pz - this.clusterCenterZ;
+    return dx * dx + dz * dz > limit * limit;
   }
 
   checkCollision(px, pz, playerRadius) {

@@ -40,6 +40,8 @@ export class Game {
     this.timerEl = document.getElementById('timer');
     this.phaseHintEl = document.getElementById('phase-hint');
     this.gameOverEl = document.getElementById('game-over');
+    this.gameOverLabelEl = document.getElementById('game-over-label');
+    this.gameOverTitleEl = document.getElementById('game-over-title');
     this.finalScoreEl = document.getElementById('final-score');
     this.restartBtn = document.getElementById('restart-btn');
 
@@ -61,6 +63,7 @@ export class Game {
     this.constellation.reset();
     this.constellation.spawn(this.player.x, this.player.z);
     this.gameOverEl.classList.add('hidden');
+    this.gameOverEl.classList.remove('game-over-cheating');
     this.updateHud();
   }
 
@@ -82,9 +85,20 @@ export class Game {
     }
   }
 
-  die() {
+  die(reason = 'hit') {
     this.state = 'dead';
     this.finalScoreEl.textContent = `Survived ${this.survivalTime.toFixed(1)}s`;
+
+    if (reason === 'cheating') {
+      this.gameOverLabelEl.textContent = 'Out of bounds';
+      this.gameOverTitleEl.textContent = 'No cheating allowed';
+      this.gameOverEl.classList.add('game-over-cheating');
+    } else {
+      this.gameOverLabelEl.textContent = 'Constellation hit';
+      this.gameOverTitleEl.textContent = 'You were caught in the stars';
+      this.gameOverEl.classList.remove('game-over-cheating');
+    }
+
     this.gameOverEl.classList.remove('hidden');
   }
 
@@ -111,8 +125,18 @@ export class Game {
     this.constellation.update(dt, this.elapsed);
     this.followCamera.update(this.player.x, this.player.z);
 
-    if (this.constellation.checkCollision(this.player.x, this.player.z, this.player.radius)) {
-      this.die();
+    if (
+      this.constellation.isPlayerOutsideBoundary(
+        this.player.x,
+        this.player.z,
+        this.player.radius
+      )
+    ) {
+      this.die('cheating');
+    } else if (
+      this.constellation.checkCollision(this.player.x, this.player.z, this.player.radius)
+    ) {
+      this.die('hit');
     }
 
     this.updateHud();
